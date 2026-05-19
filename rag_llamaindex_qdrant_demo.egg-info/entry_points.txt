@@ -1,0 +1,2 @@
+[console_scripts]
+rag-demo = rag_demo.__main__:main

@@ -1,0 +1,207 @@
+# Python + LlamaIndex + Qdrant RAG Demo
+
+一个最小可运行的 RAG Demo：
+
+- 读取 `docs/` 下的 `.txt`、`.md`、`.pdf`
+- 解析 Markdown 中的本地图片内容并转成文本
+- 使用结构化 + 递归式混合策略切分 chunk
+- 使用第三方 OpenAI 兼容 embedding API 写入服务器 Qdrant
+- 支持命令行提问
+- 返回答案和引用来源
+
+## 1. 创建环境
+
+推荐使用 uv 管理依赖和运行命令，`requirements.txt` 仅用于兼容仍然使用 `pip install -r requirements.txt` 的环境。
+
+### 方式 A：使用 uv（推荐）
+
+```bash
+cd /Users/apple/Documents/study/rag-llamaindex-qdrant-demo
+uv sync
+```
+
+执行命令时可直接使用：
+
+```bash
+uv run rag-demo ingest
+uv run rag-demo ask "这个项目演示了什么？"
+```
+
+### 方式 B：使用 venv + pip（兼容方式）
+
+```bash
+cd /Users/apple/Documents/study/rag-llamaindex-qdrant-demo
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pip install -e .
+```
+
+## 2. 配置
+
+```bash
+cp .env .env
+```
+
+配置你的服务器 Qdrant 地址和第三方 AI API：
+
+```env
+# Docker 单机 Qdrant 的 HTTP 地址，注意服务器安全组/防火墙需要放通 6333
+QDRANT_URL=http://你的服务器IP:6333
+QDRANT_API_KEY=
+QDRANT_COLLECTION=rag_demo
+
+# 第三方 OpenAI 兼容 API
+AI_API_BASE=https://你的第三方API地址/v1
+AI_API_KEY=你的第三方API_KEY
+CHAT_MODEL=你的对话模型名称
+EMBED_MODEL=你的Embedding模型名称
+EMBED_DIMENSIONS=
+```
+
+例如硅基流动：
+
+```env
+AI_API_BASE=https://api.siliconflow.cn/v1
+AI_API_KEY=sk-xxx
+CHAT_MODEL=Qwen/Qwen2.5-7B-Instruct
+EMBED_MODEL=BAAI/bge-m3
+```
+
+例如阿里百炼 OpenAI 兼容模式：
+
+```env
+AI_API_BASE=https://dashscope.aliyuncs.com/compatible-mode/v1
+AI_API_KEY=sk-xxx
+CHAT_MODEL=qwen-plus
+EMBED_MODEL=text-embedding-v3
+```
+
+如果你的对话模型和 embedding 模型来自不同服务商，可以覆盖单独配置：
+
+```env
+CHAT_API_BASE=https://对话模型API地址/v1
+CHAT_API_KEY=对话模型KEY
+EMBED_API_BASE=https://Embedding模型API地址/v1
+EMBED_API_KEY=Embedding模型KEY
+```
+
+Markdown 中的本地图片会在入库前交给视觉模型解析成文本，再参与后续 chunk 切分和向量化。默认复用 `CHAT_API_BASE`、`CHAT_API_KEY` 和 `CHAT_MODEL`，如果视觉模型是单独服务，可以覆盖：
+
+```env
+IMAGE_PARSE_ENABLED=true
+IMAGE_API_BASE=https://视觉模型API地址/v1
+IMAGE_API_KEY=视觉模型KEY
+IMAGE_MODEL=你的视觉模型名称
+IMAGE_DETAIL=auto
+```
+
+支持 Markdown 内联图片写法，例如 `![架构图](./images/arch.png)`。目前只解析本地图片文件，远程 URL 图片会跳过。
+
+## 3. 放入文档
+
+把你的 `.txt`、`.md`、`.pdf` 文件放到 `docs/` 目录，支持子目录递归读取。
+
+项目里已放了一个 `docs/demo.md`，可以直接用于首次测试。
+
+## 4. 写入索引
+
+如果你使用 uv：
+
+```bash
+uv run rag-demo ingest
+```
+
+如果你使用 venv + pip：
+
+```bash
+python -m rag_demo ingest
+```
+
+执行后会：
+
+1. 读取 `docs/`
+2. 解析 Markdown 中的本地图片内容，并把图片描述写回文档文本
+3. 先按标题层级做结构化切分，再对超长正文做递归式细化切分
+4. 调用第三方 embedding API 生成向量
+5. 写入服务器 Qdrant collection
+
+## 5. 命令行提问
+
+如果你使用 uv：
+
+```bash
+uv run rag-demo ask "这个项目演示了什么？"
+```
+
+如果你使用 venv + pip：
+
+```bash
+python -m rag_demo ask "这个项目演示了什么？"
+```
+
+输出包含：
+
+- `答案`
+- `引用来源`，包括文件名、PDF 页码（如果可用）、相似度分数和 chunk 摘要
+
+## 常用参数
+
+在 `.env` 中调整：
+
+```env
+CHUNK_SIZE=512
+CHUNK_OVERLAP=80
+SIMILARITY_TOP_K=4
+EMBED_MODEL=你的Embedding模型名称
+EMBED_DIMENSIONS=
+IMAGE_PARSE_ENABLED=true
+IMAGE_MODEL=你的视觉模型名称
+```
+
+`CHUNK_SIZE` 控制单个 chunk 的最大文本长度，`CHUNK_OVERLAP` 控制递归细化后相邻 chunk 的重叠长度。
+
+`EMBED_MODEL` 必须填写你的第三方 API 实际支持的 embedding 模型名。注意：重新切换 embedding 模型后，建议换一个新的 `QDRANT_COLLECTION`，或者清空旧 collection 后重新执行 `ingest`，避免不同维度的向量混在一起。
+
+## 服务器 Qdrant 检查
+
+如果你的 Qdrant 是这样启动的：
+
+```bash
+docker run -d --name qdrant -p 6333:6333 -p 6334:6334 -v qdrant_storage:/qdrant/storage qdrant/qdrant
+```
+
+本机可以先验证连通性：
+
+```bash
+curl http://你的服务器IP:6333/collections
+```
+
+能返回 collections JSON 就说明 HTTP 端口可访问。
+
+## 依赖文件说明
+
+- `pyproject.toml`：项目依赖的唯一声明来源
+- `uv.lock`：uv 解析后的锁文件，用于可复现安装
+- `requirements.txt`：仅保留直接依赖，作为 pip 兼容清单，不再保存完整传递依赖树
+
+如果需要重新生成 `requirements.txt`，请直接同步 `pyproject.toml` 中的 `dependencies`，不要使用 `uv export` 覆盖它，否则会重新展开为完整依赖树。
+
+## 项目结构
+
+```text
+rag-llamaindex-qdrant-demo/
+├── docs/
+├── rag_demo/
+│   ├── __main__.py
+│   ├── ask.py
+│   ├── config.py
+│   ├── ingest.py
+│   ├── hybrid_splitter.py
+│   ├── markdown_images.py
+│   └── qdrant_store.py
+├── uv.lock
+├── .env.example
+├── README.md
+└── requirements.txt
+```

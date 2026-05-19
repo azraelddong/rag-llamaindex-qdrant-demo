@@ -1,0 +1,23 @@
+[project]
+name = "rag-llamaindex-qdrant-demo"
+version = "0.1.0"
+description = "Minimal command-line RAG demo with LlamaIndex, Qdrant, and OpenAI-compatible APIs."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "llama-index>=0.11.0",
+    "llama-index-vector-stores-qdrant>=0.3.0",
+    "llama-index-readers-file>=0.2.0",
+    "llama-index-embeddings-openai>=0.2.0",
+    "llama-index-llms-openai>=0.2.0",
+    "openai>=1.0.0",
+    "qdrant-client>=1.10.0",
+    "pymupdf>=1.24.0",
+    "python-dotenv>=1.0.1",
+]
+
+[project.scripts]
+rag-demo = "rag_demo.__main__:main"
+
+[tool.uv]
+package = true
