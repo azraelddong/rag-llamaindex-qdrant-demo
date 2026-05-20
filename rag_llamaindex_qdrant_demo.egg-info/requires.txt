@@ -3,7 +3,14 @@ llama-index-vector-stores-qdrant>=0.3.0
 llama-index-readers-file>=0.2.0
 llama-index-embeddings-openai>=0.2.0
 llama-index-llms-openai>=0.2.0
+llama-index-postprocessor-flag-embedding-reranker>=0.2.0
+FlagEmbedding>=1.2.0
+transformers<5
 openai>=1.0.0
 qdrant-client>=1.10.0
 pymupdf>=1.24.0
 python-dotenv>=1.0.1
+
+[:sys_platform == "darwin" and platform_machine == "x86_64"]
+torch==2.2.2
+numpy<2

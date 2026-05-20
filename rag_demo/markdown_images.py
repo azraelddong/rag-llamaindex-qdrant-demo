@@ -9,6 +9,12 @@ from urllib.parse import unquote, urlparse
 
 from llama_index.core import Document
 from openai import OpenAI
+from openai.types.chat import (
+    ChatCompletionContentPartImageParam,
+    ChatCompletionContentPartTextParam,
+    ChatCompletionMessageParam,
+    ChatCompletionUserMessageParam,
+)
 
 from rag_demo.config import AppConfig, DOCS_DIR
 
@@ -104,24 +110,27 @@ class OpenAIVisionImageDescriber:
         if alt_text:
             prompt = f"{prompt}\n\nMarkdown 图片替代文本：{alt_text}"
 
+        text_part: ChatCompletionContentPartTextParam = {"type": "text", "text": prompt}
+        image_part: ChatCompletionContentPartImageParam = {
+            "type": "image_url",
+            "image_url": {
+                "url": image_url,
+                "detail": self.config.image_detail,
+            },
+        }
+        message_content: list[
+            ChatCompletionContentPartTextParam | ChatCompletionContentPartImageParam
+        ] = [text_part, image_part]
+        user_message: ChatCompletionUserMessageParam = {
+            "role": "user",
+            "content": message_content,
+        }
+        messages: list[ChatCompletionMessageParam] = [user_message]
+
         response = self.client.chat.completions.create(
             model=self.config.image_model,
             temperature=0,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": image_url,
-                                "detail": self.config.image_detail,
-                            },
-                        },
-                    ],
-                }
-            ],
+            messages=messages,
         )
         print(f"解析markdown图片返回的结果 : {response}")
         content = response.choices[0].message.content

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Optional
 from pathlib import Path
+from typing import Literal, Optional, cast
 
 from dotenv import load_dotenv
 from llama_index.core import Settings
@@ -13,6 +13,8 @@ from llama_index.llms.openai import OpenAI
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DOCS_DIR = PROJECT_ROOT / "docs"
+
+ImageDetail = Literal["auto", "low", "high"]
 
 
 @dataclass(frozen=True)
@@ -25,6 +27,10 @@ class AppConfig:
     chunk_size: int
     chunk_overlap: int
     similarity_top_k: int
+    rerank_enabled: bool
+    rerank_model: str
+    rerank_top_n: int
+    rerank_use_fp16: bool
     api_base: str
     api_key: str
     chat_api_base: str
@@ -38,7 +44,7 @@ class AppConfig:
     image_api_base: str
     image_api_key: str
     image_model: str
-    image_detail: str
+    image_detail: ImageDetail
     ai_timeout: float
 
 
@@ -59,7 +65,11 @@ def load_config() -> AppConfig:
         qdrant_trust_env=_optional_bool(os.getenv("QDRANT_TRUST_ENV"), default=False),
         chunk_size=int(os.getenv("CHUNK_SIZE", "512")),
         chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "80")),
-        similarity_top_k=int(os.getenv("SIMILARITY_TOP_K", "4")),
+        similarity_top_k=int(os.getenv("SIMILARITY_TOP_K", "20")),
+        rerank_enabled=_optional_bool(os.getenv("RERANK_ENABLED"), default=True),
+        rerank_model=_blank_to_none(os.getenv("RERANK_MODEL")) or "BAAI/bge-reranker-v2-m3",
+        rerank_top_n=int(os.getenv("RERANK_TOP_N", "4")),
+        rerank_use_fp16=_optional_bool(os.getenv("RERANK_USE_FP16"), default=False),
         api_base=api_base,
         api_key=api_key,
         chat_api_base=chat_api_base,
@@ -73,7 +83,7 @@ def load_config() -> AppConfig:
         image_api_base=_blank_to_none(os.getenv("IMAGE_API_BASE")) or chat_api_base,
         image_api_key=_blank_to_none(os.getenv("IMAGE_API_KEY")) or chat_api_key,
         image_model=_blank_to_none(os.getenv("IMAGE_MODEL")) or chat_model,
-        image_detail=os.getenv("IMAGE_DETAIL", "auto"),
+        image_detail=_load_image_detail(),
         ai_timeout=float(os.getenv("AI_TIMEOUT", "120")),
     )
 
@@ -125,3 +135,10 @@ def _optional_bool(value: Optional[str], default: bool) -> bool:
     if value is None:
         return default
     return value.lower() in {"1", "true", "yes", "on"}
+
+
+def _load_image_detail() -> ImageDetail:
+    value = (os.getenv("IMAGE_DETAIL", "auto") or "auto").strip().lower()
+    if value in {"auto", "low", "high"}:
+        return cast(ImageDetail, value)
+    raise RuntimeError("IMAGE_DETAIL must be one of: auto, low, high")

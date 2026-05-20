@@ -4,8 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Iterable, Sequence
 
-from llama_index.core.schema import BaseNode, Document, TextNode
-
+from llama_index.core.schema import BaseNode, Document, NodeRelationship, TextNode
 
 _MARKDOWN_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
 _NUMBERED_HEADING_RE = re.compile(r"^(\d+(?:\.\d+){0,5})[\.、\s]+(.+?)\s*$")
@@ -53,10 +52,22 @@ class HybridTextSplitter:
 
         for document_index, document in enumerate(documents):
             blocks = split_structured(document.get_content())
+            document_metadata = dict(document.metadata or {})
+            document_name = (
+                document_metadata.get("file_name")
+                or document_metadata.get("filename")
+                or document_metadata.get("file_path")
+                or document_metadata.get("path")
+                or f"document-{document_index + 1}"
+            )
+            source_relationship = {
+                NodeRelationship.SOURCE: document.as_related_node_info()
+            }
+
             for block_index, block in enumerate(blocks):
                 chunks = recursive_split(block.text, self.chunk_size, self.chunk_overlap)
                 for chunk_index, chunk in enumerate(chunks):
-                    metadata = dict(document.metadata or {})
+                    metadata = dict(document_metadata)
                     metadata.update(
                         {
                             "split_strategy": (
@@ -70,11 +81,17 @@ class HybridTextSplitter:
                             "chunk_index": chunk_index,
                         }
                     )
-                    nodes.append(TextNode(text=chunk, metadata=metadata))
+                    nodes.append(
+                        TextNode(
+                            text=chunk,
+                            metadata=metadata,
+                            relationships=source_relationship,
+                        )
+                    )
 
             if show_progress:
                 print(
-                    f"Split document {document_index + 1}: "
+                    f"Split document {document_name}: "
                     f"{len(blocks)} section(s), {len(nodes)} total chunk(s)."
                 )
 
@@ -139,7 +156,7 @@ def _split_recursive(text: str, chunk_size: int, separators: Sequence[str]) -> l
         return [text] if text else []
 
     if not separators:
-        return [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
+        return [text[i: i + chunk_size] for i in range(0, len(text), chunk_size)]
 
     separator = separators[0]
     pieces = _split_keep_separator(text, separator)
@@ -160,9 +177,9 @@ def _split_recursive(text: str, chunk_size: int, separators: Sequence[str]) -> l
 
 
 def _merge_with_overlap(
-    pieces: Sequence[str],
-    chunk_size: int,
-    chunk_overlap: int,
+        pieces: Sequence[str],
+        chunk_size: int,
+        chunk_overlap: int,
 ) -> list[str]:
     chunks: list[str] = []
     current = ""

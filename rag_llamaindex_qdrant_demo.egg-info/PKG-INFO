@@ -9,6 +9,11 @@ Requires-Dist: llama-index-vector-stores-qdrant>=0.3.0
 Requires-Dist: llama-index-readers-file>=0.2.0
 Requires-Dist: llama-index-embeddings-openai>=0.2.0
 Requires-Dist: llama-index-llms-openai>=0.2.0
+Requires-Dist: llama-index-postprocessor-flag-embedding-reranker>=0.2.0
+Requires-Dist: FlagEmbedding>=1.2.0
+Requires-Dist: torch==2.2.2; sys_platform == "darwin" and platform_machine == "x86_64"
+Requires-Dist: numpy<2; sys_platform == "darwin" and platform_machine == "x86_64"
+Requires-Dist: transformers<5
 Requires-Dist: openai>=1.0.0
 Requires-Dist: qdrant-client>=1.10.0
 Requires-Dist: pymupdf>=1.24.0
@@ -28,6 +33,8 @@ Requires-Dist: python-dotenv>=1.0.1
 ## 1. 创建环境
 
 推荐使用 uv 管理依赖和运行命令，`requirements.txt` 仅用于兼容仍然使用 `pip install -r requirements.txt` 的环境。
+
+默认依赖已包含本地 BGE rerank。Intel Mac 会固定使用可安装的 `torch==2.2.2`。
 
 ### 方式 A：使用 uv（推荐）
 
@@ -168,7 +175,11 @@ python -m rag_demo ask "这个项目演示了什么？"
 ```env
 CHUNK_SIZE=512
 CHUNK_OVERLAP=80
-SIMILARITY_TOP_K=4
+SIMILARITY_TOP_K=20
+RERANK_ENABLED=true
+RERANK_MODEL=BAAI/bge-reranker-v2-m3
+RERANK_TOP_N=4
+RERANK_USE_FP16=false
 EMBED_MODEL=你的Embedding模型名称
 EMBED_DIMENSIONS=
 IMAGE_PARSE_ENABLED=true
@@ -176,6 +187,10 @@ IMAGE_MODEL=你的视觉模型名称
 ```
 
 `CHUNK_SIZE` 控制单个 chunk 的最大文本长度，`CHUNK_OVERLAP` 控制递归细化后相邻 chunk 的重叠长度。
+
+默认开启 BGE rerank 二阶段重排。`SIMILARITY_TOP_K` 控制第一阶段从 Qdrant 召回的候选 chunk 数量，`RERANK_TOP_N` 控制 rerank 后保留给大模型的 chunk 数量。如果本机没有 GPU，保持 `RERANK_USE_FP16=false`；使用 CUDA GPU 时可以改为 `true`。
+
+首次执行 `ask` 时会加载 `RERANK_MODEL` 对应的本地 reranker 模型；如果模型尚未缓存，会先从 Hugging Face 下载。内网环境可以提前下载模型，并把 `RERANK_MODEL` 配成本地模型目录。
 
 `EMBED_MODEL` 必须填写你的第三方 API 实际支持的 embedding 模型名。注意：重新切换 embedding 模型后，建议换一个新的 `QDRANT_COLLECTION`，或者清空旧 collection 后重新执行 `ingest`，避免不同维度的向量混在一起。
 
